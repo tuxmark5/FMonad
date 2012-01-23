@@ -1,0 +1,17 @@
+name:           FMonad
+version:        0.0.1
+cabal-version:  -any
+build-type:     Simple
+license:        AllRightsReserved
+build-depends:  base -any, containers -any, dbus-client -any,
+                dbus-core -any, haskell98 -any, monads-tf -any,
+                network -any, text -any, transformers -any, 
+                X11 -any, xmonad -any, xmonad-contrib -any
+description:    .
+author:         tux_mark_5
+data-dir:       data
+executable:     FMonad
+main-is:        Main.hs
+buildable:      True
+hs-source-dirs: src
+ghc-options:    -threaded
