@@ -23,6 +23,8 @@ fcManage0 = composeAll
   , appName   =? "Komodo_find2"       --> doFloat
   , className =? "SmartGit"           --> doFloat
   , className =? "stalonetray"        --> doIgnore
+  , title     =? "xfce4-notifyd"      --> doIgnore
+  , title     =? "xfce4-panel"        --> doIgnore
   ]
   
 ------------------------------------------------------------------------------------------------

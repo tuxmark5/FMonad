@@ -1,4 +1,6 @@
-{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE IncoherentInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module F.XMonad.Control
@@ -7,76 +9,120 @@ module F.XMonad.Control
   
 {- ########################################################################################## -}
 
-import Control.Concurrent (forkIO, forkOS)
-import Control.Concurrent.Chan
-import Control.Monad ((>>=), when)
-import Control.Monad.IO.Class (liftIO)
+import            Control.Concurrent (forkIO, forkOS)
+import            Control.Concurrent.Chan
+import            Control.Monad ((>>=), when)
+import            Control.Monad.IO.Class (liftIO)
 
-import Data.Int
-import Data.Maybe (fromJust)
-import Data.Monoid (All(..))
-import Data.Text.Lazy (pack)
+import            Data.Int
+import            Data.Maybe (fromJust)
+import            Data.Monoid (All(..))
+import            Data.Text (pack)
 
-import DBus.Client
+import            DBus.Client (Client(..), Method(..))
+import            DBus.Client.Simple (AutoReply(..), AutoSignature(..), RequestNameFlag (..), connectSession, export, method, 
+                  requestName)
+import            DBus.Introspection (Object(..))
+import            DBus.Types 
 
-import F.XMonad.Config
+import            F.XMonad.Config
 
-import Graphics.X11.Types
-import Graphics.X11.Xlib.Atom (internAtom)
-import Graphics.X11.Xlib.Display
-import Graphics.X11.Xlib.Event
-import Graphics.X11.Xlib.Extras
-import Graphics.X11.Xlib.Types
+import            Graphics.X11.Types
+import            Graphics.X11.Xlib.Atom (internAtom)
+import            Graphics.X11.Xlib.Display
+import            Graphics.X11.Xlib.Event
+import            Graphics.X11.Xlib.Extras
+import            Graphics.X11.Xlib.Types
 
-import List (transpose)
+import            List (transpose)
 
-import XMonad (ScreenId, X, io, kill, layoutHook, restart, sendMessage, setLayout, windows, withFocused)
-import XMonad.Actions.CycleWS (nextScreen, swapNextScreen)
-import XMonad.Actions.GridSelect (goToSelected)
-import XMonad.Core (ScreenId(..), fromMessage, whenJust, withDisplay)
-import XMonad.Hooks.SetWMName (setWMName)
-import XMonad.Layout (ChangeLayout(..), IncMasterN(..), Resize(..))
-import XMonad.Layout.IndependentScreens (onCurrentScreen)
-import XMonad.Layout.SubLayouts (GroupMsg(..), onGroup, pullGroup)
-import XMonad.Layout.LayoutModifier (LayoutModifier(..), ModifiedLayout(..))
-import XMonad.Layout.WindowNavigation (Direction2D(..), Navigate(..))
-import XMonad.Operations (screenWorkspace)
-import qualified XMonad.StackSet as S
-import XMonad.Util.EZConfig (mkKeymap)
+import            XMonad (ScreenId, X, io, kill, layoutHook, restart, sendMessage, setLayout, 
+                  windows, withFocused)
+import            XMonad.Actions.CycleWS (nextScreen, swapNextScreen)
+import            XMonad.Actions.GridSelect (goToSelected)
+import            XMonad.Core (ScreenId(..), fromMessage, whenJust, withDisplay)
+import            XMonad.Hooks.SetWMName (setWMName)
+import            XMonad.Layout (ChangeLayout(..), IncMasterN(..), Resize(..))
+import            XMonad.Layout.IndependentScreens (onCurrentScreen)
+import            XMonad.Layout.SubLayouts (GroupMsg(..), onGroup, pullGroup)
+import            XMonad.Layout.LayoutModifier (LayoutModifier(..), ModifiedLayout(..))
+import            XMonad.Layout.WindowNavigation (Direction2D(..), Navigate(..))
+import            XMonad.Operations (screenWorkspace)
+import qualified  XMonad.StackSet as S
+import            XMonad.Util.EZConfig (mkKeymap)
 
-import System.Exit (ExitCode(..), exitWith)
+import            System.Exit (ExitCode(..), exitWith)
 
-{- ########################################################################################## -}                                                         
+{- ########################################################################################## -}
 {- # WORKSPACES                                                                             # -}
 {- ########################################################################################## -}
-{-
 
-x_go dir        = sendMessage $ Go dir
-x_merge dir     = sendMessage $ pullGroup dir
-x_swap dir      = sendMessage $ Swap dir
+-- x_resetLayout c = setLayout $ layoutHook c -- XMonad.
 
-x_resetLayout c = setLayout $ layoutHook c -- XMonad.
+toDir :: Int32 -> Direction2D
+toDir 0 = L
+toDir 1 = R
+toDir 2 = U
+toDir 3 = D
 
-x_dbind :: String -> [String] -> (Direction2D -> X()) -> [(String, X())]
-x_dbind m d f   = [(m ++ key, f dir) | (key, dir) <- zip d (cycle [U, D, L, R])]
-
-     x_dbind "M-"              x_dirKeys x_go
-  ++ x_dbind "M-M3-"           x_dirKeys x_swap
-  ++ x_dbind "M-M4-"           x_dirKeys x_merge
-
-  -}
-
-{- ########################################################################################## -}                                                         
+{- ########################################################################################## -}
 {- # COMMAND CHANNEL                                                                        # -}
 {- ########################################################################################## -}
 
 type CommandChan  = Chan (X ())
 data CommandState = CommandState 
-  { fsDisplay :: Display
+  { fsClient  :: Client
+  , fsDisplay :: Display
   , fsRoot    :: Window
   , fsAtom    :: Atom
   , fsChan    :: CommandChan
   }
+
+--method' :: (AutoSignature fun, AutoReply fun) => InterfaceName -> MemberName -> fun -> Method
+--method' ifc mbr fun = 
+
+instance IsVariant Int where
+  fromVariant v = maybe Nothing (Just . fromIntegral) $ (fromVariant v :: Maybe Int32)
+  toVariant   a = toVariant $ (fromIntegral a :: Int32)
+instance IsVariant ScreenId where
+  fromVariant v = maybe Nothing (Just . fromIntegral) $ (fromVariant v :: Maybe Int32)
+  toVariant   a = toVariant $ (fromIntegral a :: Int32)
+
+fdInterface :: CommandState -> [Method]
+fdInterface state =
+  [ method "f.xmonad.core"    "exit"       $          mIO $ exitWith ExitSuccess
+  , method "f.xmonad.core"    "restart"    $          mX  $ restart "fmonad" True
+  , method "f.xmonad.core"    "setWMName"  $ \name -> mX  $ setWMName name
+  , method "f.xmonad.layout"  "expand"     $          mX  $ sendMessage Expand
+  , method "f.xmonad.layout"  "shrink"     $          mX  $ sendMessage Shrink
+  , method "f.xmonad.layout"  "next"       $          mX  $ sendMessage NextLayout
+  --, ("prev",       met  $ sendMessage PrevLayout)
+  --, ("reset",      met  $ setLayout $ layoutHook conf)
+  , method "f.xmonad.master"  "focus"      $          mX  $ windows S.focusMaster
+  , method "f.xmonad.master"  "mod"        $ \d ->    mX  $ sendMessage (IncMasterN $ fromIntegral (d :: Int32))
+  , method "f.xmonad.master"  "swap"       $          mX  $ windows S.swapMaster
+  , method "f.xmonad.nav"     "gridSelect" $          mX  $ goToSelected $ fcGridConfig
+  , method "f.xmonad.nav"     "move"       $ \d ->    mX  $ sendMessage $ Go $ toDir d
+  , method "f.xmonad.nav"     "swap"       $ \d ->    mX  $ sendMessage $ Swap $ toDir d
+  , method "f.xmonad.screen"  "setCurr"    $ \sc ->   mX  $ screenWorkspace (fromIntegral (sc :: Int32)) >>= flip whenJust (windows . (S.view))
+  , method "f.xmonad.screen"  "moveWin"    $ \sc ->   mX  $ screenWorkspace (fromIntegral (sc :: Int32)) >>= flip whenJust (windows . (S.shift))
+  , method "f.xmonad.screen"  "next"       $          mX  $ nextScreen
+  , method "f.xmonad.screen"  "swapNext"   $          mX  $ swapNextScreen
+  , method "f.xmonad.tab"     "merge"      $ \d ->    mX  $ sendMessage $ pullGroup $ toDir d
+  , method "f.xmonad.tab"     "prev"       $          mX  $ onGroup S.focusUp'
+  , method "f.xmonad.tab"     "next"       $          mX  $ onGroup S.focusDown'
+  , method "f.xmonad.tab"     "unmerge"    $          mX  $ withFocused (sendMessage . UnMerge)
+  , method "f.xmonad.win"     "close"      $          mX  $ kill
+  , method "f.xmonad.win"     "sink"       $          mX  $ withFocused $ windows . S.sink
+  , method "f.xmonad.wk"      "setCurr"    $ \wk ->   mX  $ windows $ onCurrentScreen S.greedyView wk
+  , method "f.xmonad.wk"      "setCurrH"   $ \wk ->   mX  $ windows $ S.greedyView wk
+  , method "f.xmonad.wk"      "moveWin"    $ \wk ->   mX  $ windows $ onCurrentScreen S.shift wk
+  , method "f.xmonad.wk"      "moveWinG"   $ \wk ->   mX  $ windows $ S.shift wk
+  ]
+  where mX      = forwardCall state
+        mIO a   = mX $ io a
+
+  {-
 
 fdInterface :: CommandState -> Object
 fdInterface state = let
@@ -149,25 +195,28 @@ fdInterface state = let
     , ("layoutChanged", MemberSignal "iss")
     ])
   ]
-
-fmMet :: CommandState -> Signature -> ([Variant] -> X ()) -> Member
+  -}
+{-fmMet :: CommandState -> Signature -> ([Variant] -> X ()) -> Member
 fmMet s args met = method args "" $ \call -> liftIO $ do
   writeChan (fsChan s) (met $ methodCtxBody call)
   fdSendExposeEvent s
-  
+  -}
 {- ########################################################################################## -}
   
-fdRequestName :: String -> DBus ()
-fdRequestName sfx = requestName name opts err (\r -> return ())
-  where name = mkBusName_ . pack $ ("f.XMonad-" ++ sfx)
+forwardCall :: CommandState -> X () -> IO ()
+forwardCall state m = do
+  writeChan (fsChan state) m
+  fdSendExposeEvent state
+  
+fdRequestName :: Client -> String -> IO ()
+fdRequestName cl sfx = requestName cl name opts >> return ()
+  where name = busName_ . pack $ ("f.xmonad" ++ sfx)
         opts = [AllowReplacement, ReplaceExisting]
-        err  = (\e -> liftIO $ putStrLn "error requesting unique name")
 
-fdLoop :: CommandState -> DBus ()
+fdLoop :: CommandState -> IO ()
 fdLoop state = do
-  fdRequestName "X"
-  export "/xmonad" (fdInterface state)
-  mainLoop
+  fdRequestName (fsClient state) ""
+  export (fsClient state) "/xmonad" (fdInterface state)
   
 fdSendExposeEvent :: CommandState -> IO ()
 fdSendExposeEvent s = allocaXEvent $ \e -> do
@@ -188,12 +237,13 @@ fhEvent chan _ = do
   
 fhStartup :: CommandChan -> X ()
 fhStartup chan = withDisplay $ \dpy -> liftIO $ do
-  client  <- newClient =<< getSessionBus
+  client  <- connectSession
   root    <- rootWindow dpy $ defaultScreen dpy
   atom    <- internAtom dpy "XMONAD_PING" False
-  putStrLn $ "Connected as: " ++ show (clientName client)
-  forkOS $ runDBus client $ fdLoop $ CommandState 
-    { fsDisplay = dpy
+  putStrLn $ "Connected as: " ++ show "??"
+  fdLoop $ CommandState 
+    { fsClient  = client
+    , fsDisplay = dpy
     , fsRoot    = root
     , fsAtom    = atom
     , fsChan    = chan

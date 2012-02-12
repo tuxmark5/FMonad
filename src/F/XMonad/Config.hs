@@ -43,19 +43,20 @@ fcGridConfig = defaultGSConfig
 {- ########################################################################################## -}
 
 fcTabTheme = Theme 
-  { 
-    activeColor         = "#999999",
-    inactiveColor       = "#666666",
-    urgentColor         = "#FFFF00",
-    activeBorderColor   = "#FFFFFF",
-    inactiveBorderColor = "#BBBBBB",
-    urgentBorderColor   = "#00FF00",
-    activeTextColor     = "#FFFFFF",
-    inactiveTextColor   = "#BFBFBF",
-    urgentTextColor     = "#FF0000",
-    fontName            = "-misc-fixed-*-*-*-*-10-*-*-*-*-*-*-*",
-    decoWidth           = 200,
-    decoHeight          = 16
+  { activeBorderColor   = "#FFFFFF"
+  , activeColor         = "#999999"
+  , activeTextColor     = "#FFFFFF"
+  , decoHeight          = 16
+  , decoWidth           = 200
+  , fontName            = "-misc-fixed-*-*-*-*-10-*-*-*-*-*-*-*"
+  , inactiveBorderColor = "#BBBBBB"
+  , inactiveColor       = "#666666"
+  , inactiveTextColor   = "#BFBFBF"
+  , urgentBorderColor   = "#00FF00"
+  , urgentColor         = "#FFFF00"
+  , urgentTextColor     = "#FF0000"
+  , windowTitleAddons   = []
+  , windowTitleIcons    = []
   }
 
 {- ########################################################################################## -}                                                         

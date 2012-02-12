@@ -2,12 +2,6 @@ module F.XMonad.Main
 ( fmain
 ) where
   
-import Control.Concurrent (forkOS)
-  
-import DBus.Client
-  (clientName, getSessionBus, mainLoop, newClient, runDBus)
---import DBus.Constants
-
 import F.XMonad.Config
 import F.XMonad.Control
 import F.XMonad.Layout
